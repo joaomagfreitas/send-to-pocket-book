@@ -6,10 +6,12 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
 	fp "path/filepath"
+	"strings"
 
 	"github.com/cobrinhas/send-to-pocket-book/proxy-server/internal/logging"
 	"golang.org/x/oauth2"
@@ -27,6 +29,7 @@ var (
 )
 
 var srv *gmail.Service
+var client *http.Client
 
 // Send an email with attachement using GMail API
 // https://stackoverflow.com/a/62214410
@@ -107,6 +110,51 @@ func Send(email, filepath string) error {
 	return nil
 }
 
+func Authorized() error {
+	if client == nil {
+		b, err := os.ReadFile("credentials.json")
+		if err != nil {
+			log.Printf("Unable to read client secret file: %v", err)
+			return err
+		}
+
+		// If modifying these scopes, delete your previously saved token.json.
+		config, err := google.ConfigFromJSON(b, gmail.GmailSendScope)
+		if err != nil {
+			log.Printf("Unable to parse client secret file to config: %v", err)
+			return err
+		}
+		client, err = getClient(config)
+
+		if err != nil {
+			return err
+		}
+	}
+
+	url := "https://www.googleapis.com/oauth2/v1/tokeninfo"
+	resp, err := client.Get(url)
+	if err != nil {
+		return fmt.Errorf("failed to query tokeninfo: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("tokeninfo error: %s", string(body))
+	}
+
+	var info tokenInfo
+	if err := json.Unmarshal(body, &info); err != nil {
+		return fmt.Errorf("unmarshal error: %w", err)
+	}
+
+	if !strings.Contains(info.Scope, "https://www.googleapis.com/auth/gmail.send") {
+		return fmt.Errorf("token not authorized for gmail.send scope, %v", info.Scope)
+	}
+
+	return nil
+}
+
 // Retrieve a token, saves the token, then returns the generated client.
 func getClient(config *oauth2.Config) (*http.Client, error) {
 	// The file token.json stores the user's access and refresh tokens, and is
@@ -181,4 +229,10 @@ func chunkSplit(body string, limit int, end string) string {
 
 	return result
 
+}
+
+type tokenInfo struct {
+	Scope     string `json:"scope"`
+	ExpiresIn int    `json:"expires_in"`
+	Email     string `json:"email"`
 }
