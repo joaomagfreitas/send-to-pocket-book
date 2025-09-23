@@ -22,6 +22,7 @@ func RegisterHandlers(e *echo.Echo) {
 
 	e.POST(sendRoute, SendToPocketBook)
 	e.GET(internalServerErrorRoute, ReturnInternalServerError)
+	e.GET(heartbeatRoute, heartbeat)
 
 	echo.NotFoundHandler = useNotFoundHandler()
 }
@@ -101,6 +102,17 @@ func SendToPocketBook(ectx echo.Context) error {
 func ReturnInternalServerError(ectx echo.Context) error {
 	logging.Aspirador.Trace("Returning Internal Server Error")
 	return InternalServerError(ectx)
+}
+
+func heartbeat(ectx echo.Context) error {
+	logging.Aspirador.Trace("handling mail heartbeat")
+
+	if err := sender.Authorized(); err != nil {
+		logging.Aspirador.Error(err.Error())
+		return ectx.NoContent(500)
+	}
+
+	return ectx.NoContent(200)
 }
 
 func useNotFoundHandler() func(c echo.Context) error {
