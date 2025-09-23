@@ -49,7 +49,7 @@ func Send(email, filepath string) error {
 			log.Printf("Unable to parse client secret file to config: %v", err)
 			return err
 		}
-		client, err := getClient(config)
+		client, err = getClient(config)
 
 		if err != nil {
 			return err
